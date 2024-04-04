@@ -37,6 +37,7 @@ class Experiment:
     def start(self):
         args = self.args
 
+        #路径名
         path_checkpt = 'checkpoints'
         path_result = 'results'
         path_model = 'models'
@@ -50,24 +51,33 @@ class Experiment:
         path_result = os.path.join(path_result, args.run_name + '.npy')
         path_model = os.path.join(path_model, args.run_name + '.tar')
             
+        #实例化StarCraft2Env
         env = StarCraft2Env(map_name=args.map_name, window_size_x=640, window_size_y=480)
         env_info = env.get_env_info()
 
         args.n_agents = env_info["n_agents"]
         args.n_actions = env_info["n_actions"]
+        #观测空间
         args.obs_dim = env_info['obs_shape']
         args.input_dim = args.obs_dim
         if args.agent_id:
             args.input_dim += args.n_agents
         if args.last_action:        
-            args.input_dim += args.n_actions        
+            args.input_dim += args.n_actions     
+        #状态空间   
         args.state_dim = env_info['state_shape']
         args.episode_limit = env_info['episode_limit']
         
+        #tensorboard writer
         writter = SummaryWriter('runs/'+ args.run_name + '/' + datetime.now().strftime('%Y-%m-%d,%H%M%S'))
         w_util = WritterUtil(writter,args)
-        learner = Learner(w_util,args)               
+
+        #智能体本体
+        learner = Learner(w_util,args)     
+
+        
         ctrler = Controller(learner.sys_actor,args)
+
         runner = Runner(env,ctrler,args)
                 
         scheme = {}
@@ -119,13 +129,15 @@ class Experiment:
             w_util.WriteScalar('train/reward', episode_reward)
             print("Episode {}, step {}, win = {}, reward = {}".format(self.e, self.step, win_tag, episode_reward))
             buffer.add_episode(data)
-            data = buffer.sample(args.n_batch, args.top_n)
+            data = buffer.sample(args.n_batch, args.top_n) #32，1
             if data:
                 loss = learner.train(data)                        
                         
+            #测试
             if self.step // args.test_every_step != old_step // args.test_every_step:
                 self.test_model()            
 
+            #保存
             if args.save_every and self.e % args.save_every == 0:                
                 self.save()
 

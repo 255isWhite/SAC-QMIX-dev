@@ -9,6 +9,7 @@ class Runner:
         self.controller = controller
         self.env = env
         
+    #每次调用会进行一个episode的跑动
     def run(self, test_mode=False):
         
         terminated = False
@@ -20,18 +21,23 @@ class Runner:
         steps = 0
         while not terminated:
             steps += 1
+            #与SMAC环境的交互
             obs = self.env.get_obs()
             state = self.env.get_state()
             avail_actions = self.env.get_avail_actions()
-            explore = False
             
+            #exploration的体现
+            explore = False
             if not test_mode:
                 explore = True
                 
+            #从controller中获取actions
             actions = self.controller.get_actions(obs, avail_actions, explore)
+            #与SMAC环境的交互
             reward, terminated, info = self.env.step(actions)
             episode_reward += reward
 
+            #将数据存储到data中
             data['state'].append(state)
             data['obs'].append(obs)
             data['valid'].append(1)
@@ -40,6 +46,8 @@ class Runner:
             data['reward'].append(reward)
 
         #data['steps'] = steps
+            
+        #info是最后一个step的信息
         win_tag = True if 'battle_won' in info and info['battle_won'] else False
         return data, episode_reward, win_tag, steps
 

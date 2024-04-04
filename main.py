@@ -15,10 +15,11 @@ if __name__ == "__main__":
 
     
     config_path='config.json'
-        
     with open(config_path, 'r') as f:
         config = json.load(f)
+        
     args = Args()
+    #从json赋值给args
     args.__dict__.update(config)
 
     args.continue_run = False
@@ -27,6 +28,7 @@ if __name__ == "__main__":
         if argv[1] == '-c':  ##continue
             args.continue_run = True
 
+    #实例化Experiment
     experiment = Experiment(args)
     experiment.start()
     experiment.run()
