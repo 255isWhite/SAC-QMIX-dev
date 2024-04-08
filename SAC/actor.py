@@ -30,6 +30,9 @@ class Actor(nn.Module):
 
         #unavailable actions are masked as inf
         y[avail_actions == 0] = -float('inf')
+        
+        # -1维度上softmax
+        # y.shape = [n_batch, n_actions]
         y = torch.softmax(y,-1)
 
         return y,h

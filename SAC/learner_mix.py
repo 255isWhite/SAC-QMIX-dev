@@ -16,16 +16,22 @@ class Learner:
         else:            
             from .critics import Critics
 
+        #ac network
         self.sys_actor = Actors(args)
         self.sys_critic1 = Critics(args)
         self.sys_critic2 = Critics(args)
+        
+        #target c network
         self.sys_critic1_tar = Critics(args)
         self.sys_critic2_tar = Critics(args)
         #self.sys_critic1.train()
         #self.sys_critic2.train()
     
+        #mix network
         self.mix_net1 = QMixNet(args)        
-        self.mix_net2 = QMixNet(args)        
+        self.mix_net2 = QMixNet(args) 
+        
+        #target mix network       
         self.mix_net1_tar = QMixNet(args)
         self.mix_net2_tar = QMixNet(args)
         
@@ -40,16 +46,16 @@ class Learner:
             self.mix_net1_tar.cuda(self.device)
             self.mix_net2_tar.cuda(self.device)
         
+        # target networks donnot require gradients
         self.sys_critic1_tar.requires_grad_(False)
         self.sys_critic2_tar.requires_grad_(False)
         self.mix_net1_tar.requires_grad_(False)
         self.mix_net2_tar.requires_grad_(False)
 
-
-
+        # target nets update
         self._sync_target()
 
-        
+        # parameters setting
         self.n_agents = args.n_agents
         self.n_actions = args.n_actions
         self.gamma = args.gamma
@@ -73,12 +79,12 @@ class Learner:
         else:
             self.log_alpha = torch.tensor([args.log_alpha_st]*self.n_agents, dtype=torch.float32, requires_grad=True, device = self.device)
         
+        # network parameters 
         params_critic = list(self.sys_critic1.parameters()) + list(self.sys_critic2.parameters()) + list(self.mix_net1.parameters()) + list(self.mix_net2.parameters())
-        
         self.params_critic = params_critic
         self.params_actor = list(self.sys_actor.parameters())
 
-    
+        # optimizer
         self.optim_actor = torch.optim.Adam(self.sys_actor.parameters(), lr = self.lr_actor, weight_decay=self.l2)
         self.optim_critic = torch.optim.Adam(params_critic, lr = self.lr, weight_decay=self.l2)        
         self.optim_alpha = torch.optim.Adam([self.log_alpha], lr=self.lr_alpha)
@@ -88,16 +94,22 @@ class Learner:
         self.step += 1
         w_util = self.w_util
 
+        # non_blocking for speed up
         state = data['state'].to(device=self.device, non_blocking=True)
         obs = data['obs'].to(device=self.device, non_blocking=True)
         actions = data['actions'].to(device=self.device, non_blocking=True)
         reward = data['reward'].to(device=self.device, non_blocking=True)
         valid = data['valid'].to(device=self.device, non_blocking=True)
         avail_actions = data['avail_actions'].to(device=self.device, non_blocking=True)
+        
+        # one-hot encoding
         actions_onehot = self.one_hot(actions,self.n_actions)
  
+        # obs: (n_batch, T）
         n_batch = obs.shape[0]
         T = obs.shape[1]
+        
+        # connot figure out yet
         alpha = torch.exp(self.log_alpha.detach())
         valid_rate = torch.mean(valid.float())
 
@@ -111,6 +123,7 @@ class Learner:
             last_actions[:,1:] = actions_onehot[:,:-1]
             obs = torch.cat([obs,last_actions],-1)
 
+        # init hiddens for GRU nets
         hiddens1 = self.sys_critic1.init_hiddens(n_batch)
         hiddens1_tar = self.sys_critic1_tar.init_hiddens(n_batch)
         hiddens2 = self.sys_critic2.init_hiddens(n_batch)
@@ -134,40 +147,49 @@ class Learner:
             
             #with torch.no_grad():
                 
+            # forward with no grad
             Q1_tar, hiddens1_tar = self.sys_critic1_tar.forward(obs[:,i], avail_actions[:,i], hiddens1_tar)
             Q2_tar, hiddens2_tar = self.sys_critic2_tar.forward(obs[:,i], avail_actions[:,i], hiddens2_tar)
             
+            # add data to list
             Q1s.append(Q1)
             Q2s.append(Q2)
             Q1s_tar.append(Q1_tar)
             Q2s_tar.append(Q2_tar)
             ps.append(p)
 
+        # Q1s
         Q1s = torch.stack(Q1s,1)
         Q2s = torch.stack(Q2s,1)
         Q1s_tar = torch.stack(Q1s_tar,1)
         Q2s_tar = torch.stack(Q2s_tar,1)
-
         ps = torch.stack(ps,1)
+        
         ps[valid == 0] = 0
         
-        log_ps = torch.log(ps + 1e-38)
+        log_ps = torch.log(ps + 1e-38) # prevent log(0)
         log_ps[valid == 0] = 0
         #log_ps[avail_actions == 0] = 0
+        
+        
         entropy = -torch.sum(ps*log_ps, -1)
         
 
+        # valid==0 
         Q1s[valid == 0] = 0
         Q2s[valid == 0] = 0
         Q1s_tar[valid == 0] = 0
         Q2s_tar[valid == 0] = 0
 
+        # why
         q1s = self.gather_end(Q1s,actions)
         q2s = self.gather_end(Q2s,actions)
 
+        # QMIX network
         q1s_tot = self.mix_net1(q1s, state)
         q2s_tot = self.mix_net2(q2s, state)
         
+        # valid==0
         q1s_tot[valid == 0] = 0
         q2s_tot[valid == 0] = 0
         
@@ -292,6 +314,7 @@ class Learner:
         return torch.gather(input, input.ndim -1, index).squeeze(-1)
 
     def one_hot(self, tensor, n_classes):
+        # why different types? int64 and float32
         return F.one_hot(tensor.to(dtype=torch.int64), n_classes).to(dtype=torch.float32)
 
     def update_target(self):

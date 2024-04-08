@@ -8,6 +8,7 @@ class Actors(nn.Module):
         super(Actors, self).__init__()
         self.n_agents = args.n_agents
         self.n_actions = args.n_actions
+        #单智能体
         self.agent = Actor(args)
 
     def init_hiddens(self, n_batch):
@@ -17,10 +18,16 @@ class Actors(nn.Module):
 
     def forward(self, states, avail_actions, hiddens):
         n_batch = states.shape[0]
+        
+        #确保二维tensor
         states = states.reshape(-1,states.shape[-1])
         hiddens = hiddens.reshape(-1,hiddens.shape[-1])
         avail_actions = avail_actions.reshape(-1,avail_actions.shape[-1])
-        ys, hs_next = self.agent.forward(states, avail_actions, hiddens)
+        
+        #网络forward
+        ys, hs_next = self.agent.forward(states, avail_actions, hiddens) #hiddens体现了多个agent
+        
+        #shape [n_batch,n_agents,n_actions]
         ys = ys.reshape(n_batch,self.n_agents,-1)
         hs_next = hs_next.reshape(n_batch,self.n_agents,-1)
         

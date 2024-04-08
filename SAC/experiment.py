@@ -89,6 +89,7 @@ class Experiment:
         scheme['reward'] = {'shape':(), 'dtype': torch.float32}
         scheme['state'] = {'shape':(args.state_dim,), 'dtype': torch.float32}
 
+        #replay buffer初始化
         buffer = EpisodeBuffer(scheme, args)
         result = np.zeros((3, args.n_steps // args.test_every_step))
 
@@ -121,23 +122,33 @@ class Experiment:
         
         while self.step < args.n_steps:
         #for self.e in range(self.e, args.n_episodes+1):
-            self.e += 1            
+            self.e += 1 
+            
+            #环境交互，一个episode           
             data, episode_reward, win_tag, step =  runner.run()
             old_step = self.step
-            self.step += step                   
+            self.step += step      
+            
+            #log相关             
             w_util.set_step(self.step)            
             w_util.WriteScalar('train/reward', episode_reward)
             print("Episode {}, step {}, win = {}, reward = {}".format(self.e, self.step, win_tag, episode_reward))
+            
+            #replay buffer加入当前最新的episode
             buffer.add_episode(data)
+            
+            #从replay buffer中采样batch_size个episode，包含最新的一次episode
             data = buffer.sample(args.n_batch, args.top_n) #32，1
+            
             if data:
+                #learner 训练
                 loss = learner.train(data)                        
                         
-            #测试
+            #测试，每隔test_every_step步测试一次
             if self.step // args.test_every_step != old_step // args.test_every_step:
                 self.test_model()            
 
-            #保存
+            #保存，每隔save_every步保存一次
             if args.save_every and self.e % args.save_every == 0:                
                 self.save()
 
